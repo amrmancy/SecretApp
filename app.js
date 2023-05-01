@@ -1,5 +1,5 @@
 
-///////////////////////////////////////using OAuth20- Open Authorization with google ///////////////////////////////
+///////////////////////////////////////the Complete app  ///////////////////////////////////////////////////////////////////
 require('dotenv').config();
 const express= require("express");
 const bodyParser=require("body-parser");
@@ -38,7 +38,8 @@ console.log("Connected to database");                                     //msg
 const userSchema = new mongoose.Schema({            //Schema          //7 Schema has to be like this not the standard shape 
     email:String,
     password:String,
-    googleId:String        //by adding this line (googleId:String) in the Schema the user will be added once in the DB
+    googleId:String,        //by adding this line (googleId:String) in the Schema the user will be added once in the DB
+    secret:String           //added for submitting the secret to the user who created it when this user makes a post request through the route"/submit"
 });
 
 userSchema.plugin(passportLocalMongoose);                             //8 is used to hash and salt the password and to save users into mongodb
@@ -74,7 +75,6 @@ passport.use(new GoogleStrategy({                  //2 OAuth20
     userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
   },
   function(accessToken, refreshToken, profile, cb) {
-    console.log(profile);
     User.findOrCreate({ googleId: profile.id }, function (err, user) {
       return cb(err, user);
     });
@@ -108,13 +108,52 @@ app.get("/register", function(req,res){
 });
 
 
-app.get("/secrets", function(req,res){           // so simply this get request is as we have no route for secrets and we use it in post register
-    if(req.isAuthenticated()){                   // the user has to be able to access this page as long as he is logged in 
-        res.render("secrets");                   // if not he will be redirected to the login page
-    } else{
+app.get("/secrets", function(req, res){
+    User.find({"secret": {$ne: null}})
+    .then(function(foundUsers){
+        res.render("secrets", {usersWithSecrets: foundUsers});
+    })
+    .catch(function(err){
+        console.log(err);
+    });
+});
+
+app.get("/submit",function(req,res){
+    if(req.isAuthenticated()){
+        res.render("submit");
+    }else{
         res.redirect("/login");
     }
 });
+
+
+
+
+app.post("/submit",function(req,res){
+    const submittedSecret= req.body.secret;
+    User.findById(req.user.id)
+    .then(function(foundUser){
+        if(foundUser){
+            foundUser.secret=submittedSecret;
+            return foundUser.save();
+        }
+    })
+    .then(function(){
+        res.redirect("/secrets");
+    })
+    .catch(function(err){
+        console.log(err);
+    });
+});
+
+
+  
+
+
+
+
+
+
 
 app.get("/logout", function(req,res){            //logout Route that ends the session once using it
     req.logout(function(err){                    // method logout comes from passport
