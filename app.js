@@ -1,6 +1,6 @@
 
-////////////////////////////////////////////////////////////using Cookies and sessions//////////////////////////
-
+///////////////////////////////////////using OAuth20- Open Authorization with google ///////////////////////////////
+require('dotenv').config();
 const express= require("express");
 const bodyParser=require("body-parser");
 const ejs= require("ejs");
@@ -8,7 +8,8 @@ const mongoose=require("mongoose");
 const session= require("express-session");                               //1
 const passport= require("passport");                                     //2
 const passportLocalMongoose= require("passport-local-mongoose");         //3 no need to require passport-local, because it's included 
-
+const GoogleStrategy = require('passport-google-oauth20').Strategy;     //1 OAuth20
+const findOrCreate=require("mongoose-findorcreate");                    //3 OAuth20
 
 app =express();
 
@@ -36,25 +37,68 @@ console.log("Connected to database");                                     //msg
 
 const userSchema = new mongoose.Schema({            //Schema          //7 Schema has to be like this not the standard shape 
     email:String,
-    password:String
+    password:String,
+    googleId:String        //by adding this line (googleId:String) in the Schema the user will be added once in the DB
 });
 
-userSchema.plugin(passportLocalMongoose)                              //8 is used to hash and salt the password and to save users into mongodb
-
+userSchema.plugin(passportLocalMongoose);                             //8 is used to hash and salt the password and to save users into mongodb
+userSchema.plugin(findOrCreate);                                      //4 OAuth20
 
 
 
 const User=new mongoose.model("User", userSchema);
 
 passport.use(User.createStrategy());                                  //9
-passport.serializeUser(User.serializeUser());                         //10
-passport.deserializeUser(User.deserializeUser());                     //11
+                         
+passport.serializeUser(function(user, cb) {                           //10  ,changed to fit all kind of authentications(local,google,...)
+    process.nextTick(function() {
+      return cb(null, {
+        id: user.id,
+        username: user.username,
+        picture: user.picture
+      });
+    });
+  });
+  
+  passport.deserializeUser(function(user, cb) {                      //11  ,changed to fit all kind of authentications(local,google,...)
+    process.nextTick(function() {
+      return cb(null, user);
+    });
+  });                    
+
+
+passport.use(new GoogleStrategy({                  //2 OAuth20
+    clientID:process.env.CLIENT_ID,               // to access an env file you need process.env.varName
+    clientSecret:process.env.CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets",  //from googleCloud
+    userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    console.log(profile);
+    User.findOrCreate({ googleId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
+
 
 
 app.get("/", function(req,res){
     res.render("home");
 });
+                                                              //5 OAuth20
+app.get("/auth/google",                                       //this will show a pop up to sign with google
+  passport.authenticate("google", { scope: ["profile"] }));   //Scope is means targeting to know the user's profile(email, google id)
 
+app.get("/auth/google/secrets",                                   //6 OAuth20
+  passport.authenticate("google", { failureRedirect: "/login" }),  //after authorization redirect to secrets page
+  function(req, res) {
+    // Successful authentication, redirect secrets.
+    res.redirect("/secrets");
+});
+
+  
+  
 app.get("/login", function(req,res){
     res.render("login");
 });
